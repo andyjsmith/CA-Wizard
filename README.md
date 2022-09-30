@@ -29,4 +29,4 @@ What would you like to do?
 
 Install the requirements (`pip3 install -r requirements.txt`) and run the tool (`python3 ca_wizard.py`).
 
-A full guide is available here: [http://blog.ajsmith.us/posts/Creating-a-private-CA-and-using-TLS-client-certificates-mTLS/](http://blog.ajsmith.us/posts/Creating-a-private-CA-and-using-TLS-client-certificates-mTLS/)
+A full guide is available here: [https://blog.ajsmith.us/posts/Creating-your-own-Certificate-Authority-and-Using-TLS-Client-Certificates-mTLS/](https://blog.ajsmith.us/posts/Creating-your-own-Certificate-Authority-and-Using-TLS-Client-Certificates-mTLS/)

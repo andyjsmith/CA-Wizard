@@ -1,0 +1,4 @@
+cryptography>=38.0.1
+prompt-toolkit>=3.0.31
+colorama>=0.4.4
+python-dateutil>=2.8.1

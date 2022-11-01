@@ -21,6 +21,7 @@
 # SOFTWARE.
 
 import datetime
+import ipaddress
 import os.path
 import pathlib
 import re
@@ -550,6 +551,32 @@ def create_website():
         try:
             san.append(x509.DNSName(input_name))
         except ValueError as err:
+            print_error(err)
+
+    print(
+        "Now enter IPv4 addresses the certificate should be valid for, one per line. (e.g. 192.168.1.1). When you're done, leave it blank and press enter. In most cases, you should ignore this step."
+    )
+    while True:
+        input_name = prompt("IPv4 Address: ")
+        if input_name == "":
+            break
+
+        try:
+            san.append(x509.IPAddress(ipaddress.IPv4Address(input_name)))
+        except (ValueError, ipaddress.AddressValueError) as err:
+            print_error(err)
+
+    print(
+        "Now enter IPv6 addresses the certificate should be valid for, one per line. (e.g. 2001:db8:1::ab9:C0A8:102). When you're done, leave it blank and press enter. In most cases, you should ignore this step."
+    )
+    while True:
+        input_name = prompt("IPv6 Address: ")
+        if input_name == "":
+            break
+
+        try:
+            san.append(x509.IPAddress(ipaddress.IPv6Address(input_name)))
+        except (ValueError, ipaddress.AddressValueError) as err:
             print_error(err)
 
     while True:

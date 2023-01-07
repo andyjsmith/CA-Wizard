@@ -108,9 +108,7 @@ def print_error(text, *args, **kwargs):
     print(f"[{Fore.RED}ERROR{Style.RESET_ALL}] {text}", *args, **kwargs)
 
 
-def get_password(
-    subject="key", required=False
-) -> serialization.KeySerializationEncryption:
+def get_password(subject="key", required=False) -> bytes:
     while True:
         password = prompt(
             f"Enter a password to encrypt the {subject}: ",
@@ -133,7 +131,7 @@ def get_password(
 
         print_error("Passwords don't match!")
 
-    return serialization.BestAvailableEncryption(password.encode("utf-8"))
+    return password.encode("utf-8")
 
 
 def get_read_password(subject="key") -> bytes:
@@ -288,6 +286,13 @@ def load_certs(root=False, intermediate=True):
         if intermediate_cert is not None and intermediate_key is not None:
             return
 
+    # Load root cert no matter what
+    with open(ROOT_CERT_PATH, "rb") as f:
+        root_cert = x509.load_pem_x509_certificate(f.read())
+
+    # Load root name
+    root_name = root_cert.subject
+
     if root:
         # Load root key
         with open(ROOT_KEY_PATH, "rb") as f:
@@ -306,13 +311,6 @@ def load_certs(root=False, intermediate=True):
                     break
                 except (ValueError, TypeError):
                     print_error("Password for the key was incorrect. Try again.")
-
-        # Load root cert
-        with open(ROOT_CERT_PATH, "rb") as f:
-            root_cert = x509.load_pem_x509_certificate(f.read())
-
-        # Load root name
-        root_name = root_cert.subject
 
     if intermediate:
         # Load intermediate key
@@ -360,7 +358,9 @@ def create_root_ca() -> bool:
     # Generate root CA certificate
     root_key = ec.generate_private_key(ec.SECP384R1)
 
-    root_encryption_algorithm = get_password("Root CA key")
+    root_encryption_algorithm = serialization.BestAvailableEncryption(
+        get_password("Root CA key")
+    )
 
     with open(ROOT_KEY_PATH, "wb") as f:
         f.write(
@@ -439,7 +439,9 @@ def create_intermediate_ca() -> bool:
     # Generate root CA certificate
     intermediate_key = ec.generate_private_key(ec.SECP384R1)
 
-    intermediate_encryption_algorithm = get_password("Intermediate CA key")
+    intermediate_encryption_algorithm = serialization.BestAvailableEncryption(
+        get_password("Intermediate CA key")
+    )
 
     with open(INTERMEDIATE_KEY_PATH, "wb") as f:
         f.write(
@@ -510,7 +512,9 @@ def create_intermediate_ca() -> bool:
     ).sign(root_key, hashes.SHA256())
 
     with open(INTERMEDIATE_CERT_PATH, "wb") as f:
+        # Save the chain (intermediate and root) certs to the intermediate file
         f.write(intermediate_cert.public_bytes(serialization.Encoding.PEM))
+        f.write(root_cert.public_bytes(serialization.Encoding.PEM))
 
     return True
 
@@ -638,6 +642,7 @@ def create_website():
     with open(WEBSITE_DIR.joinpath(f"{friendly_name}_fullchain.crt"), "wb") as f:
         f.write(website_cert.public_bytes(serialization.Encoding.PEM))
         f.write(intermediate_cert.public_bytes(serialization.Encoding.PEM))
+        f.write(root_cert.public_bytes(serialization.Encoding.PEM))
 
 
 def create_client():
@@ -653,7 +658,24 @@ def create_client():
 
     client_key = ec.generate_private_key(ec.SECP384R1)
 
-    client_encryption_algorithm = get_password("client key", required=True)
+    client_password = get_password("client key", required=True)
+    client_encryption_algorithm = serialization.BestAvailableEncryption(client_password)
+
+    # OpenSSL < 3.0.0 and iOS devices don't like AES-encrypted certs, so use 3DES if necessary
+    if confirm(
+        "Some clients (e.g. iOS devices) do not support strong encryption methods for PKCS#12 certificates. \
+Do you want to use a weaker algorithm to support these devices?"
+    ):
+        print_warning("Key in .pfx will be encrypted using SHA1 + 3DES-CBC")
+        client_encryption_algorithm_pfx = (
+            serialization.PrivateFormat.PKCS12.encryption_builder()
+            .kdf_rounds(50000)
+            .key_cert_algorithm(serialization.pkcs12.PBES.PBESv1SHA1And3KeyTripleDESCBC)
+            .hmac_hash(hashes.SHA1())
+            .build(client_password)
+        )
+    else:
+        client_encryption_algorithm_pfx = client_encryption_algorithm
 
     with open(CLIENT_DIR.joinpath(f"{friendly_name}.key"), "wb") as f:
         f.write(
@@ -728,8 +750,8 @@ def create_client():
                 friendly_name.encode("utf-8"),
                 client_key,
                 client_cert,
-                [intermediate_cert],
-                client_encryption_algorithm,
+                [intermediate_cert, root_cert],
+                client_encryption_algorithm_pfx,
             )
         )
 
@@ -902,7 +924,7 @@ def main():
         elif choice == 4:
             install_root()
         elif choice == 5:
-            load_certs(root=True)
+            load_certs(root=True, intermediate=False)
             if not create_intermediate_ca():
                 return
         else:
